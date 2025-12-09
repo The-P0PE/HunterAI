@@ -1,0 +1,8 @@
+streamlit
+google-generativeai
+supabase
+python-dotenv
+beautifulsoup4
+fake-useragent
+requests
+pypdf
