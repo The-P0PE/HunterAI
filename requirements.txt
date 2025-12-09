@@ -6,3 +6,4 @@ beautifulsoup4
 fake-useragent
 requests
 pypdf
+dateparser
