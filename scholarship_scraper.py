@@ -1,10 +1,14 @@
 import os
 import time
 import requests
+import io
+from datetime import datetime
 from bs4 import BeautifulSoup
+from pypdf import PdfReader
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from fake_useragent import UserAgent
+import dateparser # The Date Reader
 
 # Load environment variables
 load_dotenv()
@@ -13,92 +17,130 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Initialize a fake browser identity
 ua = UserAgent()
 
-def get_page_content(url):
-    """
-    Visits a URL and returns the text content.
-    Returns None if it fails or is a PDF.
-    """
+def extract_text_from_pdf(pdf_bytes):
     try:
-        # 1. Fake a browser visit (Chrome)
-        headers = {'User-Agent': ua.random}
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        # 2. Check if it is a PDF (we skip these for now)
-        content_type = response.headers.get('Content-Type', '').lower()
-        if 'pdf' in content_type:
-            print("      ⚠️  Skipping PDF (Binary file)")
-            return None
-            
-        # 3. Parse the HTML
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # 4. Remove junk (scripts, styles, navbars)
-        for script in soup(["script", "style", "nav", "footer", "header"]):
-            script.decompose()
-            
-        # 5. Extract text
-        text = soup.get_text(separator=' ')
-        
-        # 6. Clean up whitespace
-        clean_text = ' '.join(text.split())
-        return clean_text
+        text = ""
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for i, page in enumerate(reader.pages):
+            if i > 5: break 
+            text += page.extract_text() + "\n"
+        return text
+    except Exception:
+        return None
 
-    except Exception as e:
-        print(f"      ❌ Error reading page: {e}")
+def find_deadline(text):
+    """
+    Scans text for dates near keywords like 'Deadline'
+    """
+    if not text: return None
+    
+    # Keywords to look for
+    keywords = ["deadline", "closing date", "due date", "closes on", "applications close"]
+    text_lower = text.lower()
+    
+    for word in keywords:
+        if word in text_lower:
+            try:
+                # Find the keyword position
+                start = text_lower.find(word)
+                # Grab a snippet of text AFTER the keyword (e.g., "Deadline: Jan 5")
+                # We grab 50 chars to be safe
+                snippet = text[start:start+60]
+                
+                # Ask dateparser to find a date in that mess
+                found_date = dateparser.parse(
+                    snippet, 
+                    settings={'PREFER_DATES_FROM': 'future', 'DATE_ORDER': 'DMY'}
+                )
+                
+                if found_date:
+                    return found_date
+            except:
+                continue
+    return None
+
+def get_page_content(url):
+    try:
+        headers = {'User-Agent': ua.random}
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        content_type = response.headers.get('Content-Type', '').lower()
+        
+        if 'pdf' in content_type or url.endswith('.pdf'):
+            print("      📄 Detected PDF...")
+            return extract_text_from_pdf(response.content)
+        else:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            for script in soup(["script", "style", "nav", "footer"]):
+                script.decompose()
+            return ' '.join(soup.get_text(separator=' ').split())
+
+    except Exception:
         return None
 
 def main():
-    print("🕷️  Scraper Initialized...")
+    print("🕷️  Scraper (with Expiration Guard) Initialized...")
     
-    # 1. Fetch rows that don't have text yet (limit 10 at a time to be safe)
-    # We check where 'full_text' is null
+    # 1. Fetch unread items (Limit 50 to clear backlog faster)
     response = supabase.table("scholarships") \
         .select("id, url, title") \
         .is_("full_text", "null") \
-        .limit(10) \
+        .limit(50) \
         .execute()
         
     tasks = response.data
     
     if not tasks:
-        print("✅ All current scholarships have been read!")
+        print("✅ No unread scholarships found.")
         return
 
-    print(f"📚 Found {len(tasks)} unread scholarships. Starting extraction...")
+    print(f"📚 Found {len(tasks)} unread scholarships...")
 
     for item in tasks:
-        print(f"\n📖 Reading: {item['title'][:30]}...")
-        
-        # Extract
+        print(f"\n📖 Reading: {item['title'][:40]}...")
         content = get_page_content(item['url'])
         
         if content:
-            # Save back to Supabase
+            # --- EXPIRATION CHECK ---
+            deadline = find_deadline(content)
+            is_active = True
+            deadline_str = None
+            
+            if deadline:
+                deadline_str = deadline.strftime("%Y-%m-%d")
+                # If deadline is in the past (and not today), it's expired
+                if deadline < datetime.now():
+                    print(f"      ❌ EXPIRED! (Deadline was {deadline_str})")
+                    is_active = False 
+                else:
+                    print(f"      ✅ Active! (Deadline: {deadline_str})")
+            else:
+                print("      ⚠️  No specific deadline found (Keeping as Active).")
+
+            # Update Database
             try:
-                # We only store the first 10,000 characters to save DB space
-                truncated_content = content[:10000] 
+                # Truncate to save space
+                truncated_content = content[:15000]
                 
                 supabase.table("scholarships") \
-                    .update({"full_text": truncated_content, "is_processed": True}) \
+                    .update({
+                        "full_text": truncated_content, 
+                        "is_processed": True,
+                        "is_active": is_active,
+                        "deadline": deadline_str
+                    }) \
                     .eq("id", item['id']) \
                     .execute()
-                    
-                print(f"   💾 Saved {len(truncated_content)} characters.")
             except Exception as e:
-                print(f"   ⚠️  Database Update Error: {e}")
+                print(f"   ⚠️ DB Error: {e}")
         else:
-            # If we couldn't read it, mark it processed anyway so we don't loop forever
-            print("   ⚠️  Marking as processed (skipped/failed).")
-            supabase.table("scholarships") \
-                .update({"is_processed": True}) \
-                .eq("id", item['id']) \
-                .execute()
-        
-        # Be polite to servers
-        time.sleep(2)
+            # If we can't read it, mark processed so we don't retry forever
+            print("      ⚠️  Failed to read.")
+            supabase.table("scholarships").update({"is_processed": True}).eq("id", item['id']).execute()
+            
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
