@@ -2,9 +2,8 @@ name: Daily Scholarship Hunt
 
 on:
   schedule:
-    # Runs at 06:00 UTC (Universal Time) every day
     - cron: '0 6 * * *'
-  workflow_dispatch: # Allows you to click a button to run it manually anytime
+  workflow_dispatch:
 
 jobs:
   hunt-and-process:
@@ -20,26 +19,24 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        # We install all the libraries your scripts need
         run: |
           pip install google-api-python-client supabase requests python-dotenv beautifulsoup4 fake-useragent pypdf google-generativeai
 
-      - name: Run Hunter (Find new URLs)
+      - name: Run Hunter
         env:
-          # We pass the secrets from GitHub to the script
-          SUPABASE_URL: ${{ https://iapvwvpoqmadrxzhqggj.supabase.co }}
-          SUPABASE_KEY: ${{ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcHZ3dnBvcW1hZHJ4emhxZ2dqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyMDg2MzMsImV4cCI6MjA4MDc4NDYzM30.sLsLBDbH7no-bGI-wes5GRzs_w03vOVP-IkkJJz27QU }}
-          GOOGLE_API_KEY: ${{ AIzaSyByqutLK14aVfNVY55QcEVTxZ4NuCuPbsU }}
-          SEARCH_ENGINE_ID: ${{ c66dcaea9f54f4e6b }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          SEARCH_ENGINE_ID: ${{ secrets.SEARCH_ENGINE_ID }}
         run: python scholarship_hunter.py
 
-      - name: Run Scraper (Read Text/PDFs)
+      - name: Run Scraper
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python scholarship_scraper.py
 
-      - name: Run Embedder (Memorize with AI)
+      - name: Run Embedder
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
