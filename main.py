@@ -71,7 +71,7 @@ def semantic_search(query_text):
         query_vector = get_embedding(query_text)
         response = supabase.rpc("match_scholarships", {
             "query_embedding": query_vector,
-            "match_threshold": 0.40,
+            "match_threshold": 0.60, 
             "match_count": 15
         }).execute()
         return response.data
@@ -180,3 +180,4 @@ if st.session_state.search_results:
 
 elif user_query and not st.session_state.search_results:
     st.info("Click 'Find Matches' to search.")
+
