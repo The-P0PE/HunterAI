@@ -3,6 +3,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from pypdf import PdfReader # We use this to read the uploaded resume
 
 # --- 1. SETUP & CONFIG ---
 st.set_page_config(page_title="HunterAI", page_icon="🎓", layout="wide")
@@ -33,37 +34,28 @@ supabase, ai = init_connections()
 
 @st.cache_data
 def find_best_model():
-    """
-    Automatically finds a working model name for this API Key.
-    """
+    """Auto-detects the best available Gemini model"""
     try:
-        # Get all models that support generating content
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Priority list (Fastest/Newest first)
-        preferences = [
-            'models/gemini-1.5-flash',
-            'models/gemini-1.5-flash-latest',
-            'models/gemini-1.5-pro',
-            'models/gemini-pro'
-        ]
-        
-        # Check for matches
+        preferences = ['models/gemini-1.5-flash', 'models/gemini-1.5-flash-latest', 'models/gemini-pro']
         for pref in preferences:
-            if pref in models:
-                return pref
-        
-        # Fallback: Just take the first valid one we found
-        if models:
-            return models[0]
-            
-    except Exception as e:
-        st.warning(f"⚠️ Could not auto-detect models: {e}. Defaulting to 'gemini-pro'.")
-    
-    return 'gemini-pro' # Safe fallback
+            if pref in models: return pref
+        return models[0] if models else 'gemini-pro'
+    except:
+        return 'gemini-pro'
 
-# Detect model once on startup
 ACTIVE_MODEL_NAME = find_best_model()
+
+def extract_text_from_pdf(uploaded_file):
+    """Reads the uploaded PDF and returns text"""
+    try:
+        pdf_reader = PdfReader(uploaded_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text
+    except Exception as e:
+        return f"Error reading PDF: {e}"
 
 def get_embedding(text):
     clean_text = text.replace("\n", " ")
@@ -88,24 +80,29 @@ def semantic_search(query_text):
         return []
 
 def generate_essay(user_profile, scholarship_title, scholarship_data):
-    # Use the auto-detected model
     model = genai.GenerativeModel(ACTIVE_MODEL_NAME)
-    
     prompt = f"""
-    ROLE: Academic career coach.
-    TASK: Write a 300-word scholarship application essay.
-    CANDIDATE: {user_profile}
-    SCHOLARSHIP: {scholarship_title}
-    CONTEXT: {scholarship_data[:6000]}
+    ROLE: Expert Academic Career Coach.
+    TASK: Write a strong, tailored Statement of Purpose (300-400 words).
     
-    OUTPUT: Professional, persuasive, matching candidate skills to scholarship needs.
+    CANDIDATE RESUME/PROFILE:
+    {user_profile}
+    
+    SCHOLARSHIP CONTEXT:
+    Title: {scholarship_title}
+    Details: {scholarship_data[:6000]}
+    
+    INSTRUCTIONS:
+    1. Extract specific achievements from the Candidate Profile to prove they fit the Scholarship.
+    2. Do not just summarize; argue why they are the perfect candidate.
+    3. Maintain a professional, ambitious tone.
     """
-    with st.spinner(f"✍️ Ghostwriter ({ACTIVE_MODEL_NAME.replace('models/', '')}) is thinking..."):
+    with st.spinner(f"✍️ Ghostwriter is analyzing your resume..."):
         try:
             response = model.generate_content(prompt)
             return response.text
         except Exception as e:
-            return f"Error generating essay: {e}"
+            return f"Error: {e}"
 
 def get_stats():
     try:
@@ -119,23 +116,34 @@ def get_stats():
 with st.sidebar:
     st.header("HunterAI 🎯")
     st.metric("Database Size", get_stats())
-    st.caption(f"🤖 Model: {ACTIVE_MODEL_NAME.replace('models/', '')}")
-    st.info("💡 Results are now saved in memory.")
+    st.info("💡 Upload your Resume to unlock 'Deep Match' mode.")
 
 st.title("🎓 Scholarship Discovery Engine")
 
-# SESSION STATE MANAGEMENT
+# SESSION STATE
 if "search_results" not in st.session_state:
     st.session_state.search_results = []
 if "user_profile" not in st.session_state:
     st.session_state.user_profile = ""
 
-# Input Area
+# --- NEW: RESUME UPLOADER ---
+uploaded_resume = st.file_uploader("📂 Upload your Resume/CV (PDF)", type="pdf")
+
+if uploaded_resume:
+    # Extract text immediately when uploaded
+    resume_text = extract_text_from_pdf(uploaded_resume)
+    if len(resume_text) > 50:
+        st.session_state.user_profile = resume_text
+        st.success("✅ Resume parsed! I have extracted your experience.")
+    else:
+        st.warning("⚠️ Could not read text from this PDF (it might be an image).")
+
+# Input Area (Auto-filled by Resume)
 user_query = st.text_area(
-    "Your Profile", 
+    "Your Profile (Auto-filled from Resume)", 
     value=st.session_state.user_profile,
-    placeholder="I am a Ghanaian Aerospace Engineer...",
-    height=100
+    placeholder="Or type manually: I am a Ghanaian Aerospace Engineer...",
+    height=200 # Made taller for resumes
 )
 
 # Search Button
@@ -152,27 +160,23 @@ if st.session_state.search_results:
     
     for item in st.session_state.search_results:
         with st.expander(f"**{item['title']}** ({int(item['similarity']*100)}%)"):
-            
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.write(item['content_snippet'])
                 st.markdown(f"[🔗 Link]({item['url']})")
                 
-                # Essay Button
-                if st.button("✍️ Write Draft", key=f"btn_{item['id']}"):
+                if st.button("✍️ Write Application", key=f"btn_{item['id']}"):
                     db_data = supabase.table("scholarships").select("full_text").eq("id", item['id']).execute()
                     full_text = db_data.data[0]['full_text'] if db_data.data else ""
                     
                     if full_text:
                         draft = generate_essay(st.session_state.user_profile, item['title'], full_text)
                         st.subheader("Draft Application:")
-                        st.text_area("Copy this:", value=draft, height=300)
+                        st.text_area("Copy this:", value=draft, height=400)
                     else:
-                        st.error("Text not found. Run Scraper.")
-                        
+                        st.error("Text not found. Run Scraper.")     
             with col2:
                 st.metric("Relevance", f"{int(item['similarity']*100)}%")
 
 elif user_query and not st.session_state.search_results:
-
-    st.info("No matches in memory. Click 'Find Matches'.")
+    st.info("Click 'Find Matches' to search.")
