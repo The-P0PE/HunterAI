@@ -174,4 +174,5 @@ if st.session_state.search_results:
                 st.metric("Relevance", f"{int(item['similarity']*100)}%")
 
 elif user_query and not st.session_state.search_results:
+
     st.info("No matches in memory. Click 'Find Matches'.")
