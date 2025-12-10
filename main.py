@@ -81,28 +81,75 @@ def semantic_search(query_text):
 
 def generate_essay(user_profile, scholarship_title, scholarship_data):
     model = genai.GenerativeModel(ACTIVE_MODEL_NAME)
-    prompt = f"""
-    ROLE: Expert Academic Career Coach.
-    TASK: Write a strong, tailored Statement of Purpose (300-400 words).
     
-    CANDIDATE RESUME/PROFILE:
+    # --- STEP 1: THE DRAFT (The Forger) ---
+    draft_prompt = f"""
+    ROLE: You are the candidate (Human).
+    TASK: Write a raw, first-draft Statement of Purpose (350 words).
+    
+    CANDIDATE PROFILE:
     {user_profile}
     
-    SCHOLARSHIP CONTEXT:
-    Title: {scholarship_title}
-    Details: {scholarship_data[:6000]}
+    SCHOLARSHIP GOAL:
+    {scholarship_title}
     
     INSTRUCTIONS:
-    1. Extract specific achievements from the Candidate Profile to prove they fit the Scholarship.
-    2. Do not just summarize; argue why they are the perfect candidate.
-    3. Maintain a professional, ambitious tone.
+    1. Be specific. Use the candidate's REAL experiences from the profile.
+    2. Do NOT use fancy AI words like "delve", "tapestry", "realm", or "underscores".
+    3. Write simply and directly.
     """
-    with st.spinner(f"✍️ Ghostwriter is analyzing your resume..."):
+    
+    with st.spinner("✍️ Phase 1: Drafting initial thoughts..."):
         try:
-            response = model.generate_content(prompt)
-            return response.text
+            draft = model.generate_content(draft_prompt).text
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error in drafting: {e}"
+
+    # --- STEP 2: THE DETECTIVE (The Judge) ---
+    # We ask the AI to critique its own work for "AI-ness"
+    critique_prompt = f"""
+    ROLE: AI Detection Algorithm & Writing Critic.
+    TASK: Analyze the text below. Identify sentences that sound robotic, generic, or cliché.
+    
+    TEXT TO ANALYZE:
+    {draft}
+    
+    CRITIQUE INSTRUCTIONS:
+    1. Identify phrases that lack specific detail.
+    2. Flag words that are too formal or "flowery" (e.g., "It is with great enthusiasm").
+    3. Output ONLY the critique instructions for the re-writer.
+    """
+    
+    try:
+        critique = model.generate_content(critique_prompt).text
+    except:
+        critique = "Make it more conversational and specific."
+
+    # --- STEP 3: THE EVOLUTION (The Humanizer) ---
+    humanize_prompt = f"""
+    ROLE: Professional Editor.
+    TASK: Rewrite the draft to pass an AI Detector and sound completely human.
+    
+    ORIGINAL DRAFT:
+    {draft}
+    
+    CRITIQUE TO FIX:
+    {critique}
+    
+    HUMANIZATION RULES (CRITICAL):
+    1. "Burstiness": Vary sentence length. Mix short, punchy sentences with longer ones.
+    2. "Perplexity": Use specific nouns/verbs, avoid generic adjectives.
+    3. Remove all "AI transitions" (e.g., "Furthermore", "In conclusion", "Moreover").
+    4. Start paragraphs abruptly, like a human would.
+    5. The final output must be the essay ONLY.
+    """
+    
+    with st.spinner("🧬 Phase 2: Evolving & Humanizing..."):
+        try:
+            final_essay = model.generate_content(humanize_prompt).text
+            return final_essay
+        except Exception as e:
+            return f"Error in humanizing: {e}"
 
 def get_stats():
     try:
@@ -180,4 +227,5 @@ if st.session_state.search_results:
 
 elif user_query and not st.session_state.search_results:
     st.info("Click 'Find Matches' to search.")
+
 
