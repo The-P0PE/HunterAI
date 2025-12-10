@@ -2,8 +2,9 @@ name: Daily Scholarship Hunt
 
 on:
   schedule:
+    # Runs at 06:00 UTC every day
     - cron: '0 6 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   hunt-and-process:
@@ -20,9 +21,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install google-api-python-client supabase requests python-dotenv beautifulsoup4 fake-useragent pypdf google-generativeai
+          # 1. Install standard tools from your list
+          pip install -r requirements.txt
+          
+          # 2. Force install the missing tools (Fixes the crash)
+          pip install google-api-python-client dateparser
 
-      - name: Run Hunter
+      - name: Run Hunter (Find new URLs)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -30,13 +35,13 @@ jobs:
           SEARCH_ENGINE_ID: ${{ secrets.SEARCH_ENGINE_ID }}
         run: python scholarship_hunter.py
 
-      - name: Run Scraper
+      - name: Run Scraper (Read Text/PDFs)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python scholarship_scraper.py
 
-      - name: Run Embedder
+      - name: Run Embedder (Memorize with AI)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
