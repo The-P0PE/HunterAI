@@ -69,12 +69,15 @@ def main():
         
     print(f"🎯 Targeting {len(topics)} topics: {topics}")
     
-    # 2. Build smart queries (Explicitly asking for 2025/2026)
+   # 2. Build smart queries (Explicitly asking for 2025/2026)
     dork_templates = [
         'site:.edu "{topic}" scholarship 2025 2026 international',
         'filetype:pdf "application" "{topic}" scholarship 2025',
         '"fully funded" masters "{topic}" uk 2025',
-        'site:.ac.uk "{topic}" funding international students 2025'
+        'site:.ac.uk "{topic}" funding international students 2025',
+        
+        # 🧬 THE ALPHA EVOLVED SURVIVOR:
+        'filetype:pdf intitle:application "{topic}" scholarship guidelines' 
     ]
     
     total_found = 0
@@ -107,3 +110,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
