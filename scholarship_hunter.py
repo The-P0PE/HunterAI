@@ -27,33 +27,67 @@ def get_search_terms():
         return ["civil engineering", "aerospace engineering", "optometry"]
 
 def get_dork_templates():
-    """
-    NEW FUNCTION: Fetches 'Evolved' search templates from the DB.
-    Combines them with a safe 'Default' list.
-    """
-    # 1. The Safety Net (Always keep these)
-    defaults = [
-        'site:.edu "{topic}" scholarship 2025 2026 international',
-        'filetype:pdf "application" "{topic}" scholarship 2025',
-        '"fully funded" masters "{topic}" uk 2025'
+    # 1. The "Database Raiders" (High Density Targets)
+    # These sites are warehouses. We search INSIDE them.
+    database_targets = [
+        'site:scholars4dev.com "{topic}" 2025',
+        'site:internationalscholarships.com "{topic}"',
+        'site:mastersportal.com "{topic}" scholarship',
+        'site:studyportals.com "{topic}" scholarship',
+        'site:wemakescholars.com "{topic}"',
+        'site:scholarship-positions.com "{topic}" 2025'
+    ]
+
+    # 2. The "Golden List" (Prestigious/Gov Programs)
+    prestige_targets = [
+        # UK/Commonwealth
+        'site:chevening.org "{topic}"', 
+        'site:britishcouncil.org "GREAT Scholarships" "{topic}"', 
+        'site:commonwealthscholarships.org "{topic}"',
+        
+        # USA/Global
+        'site:fulbrightonline.org "{topic}"',
+        'site:mpowerfinancing.com "{topic}" loan scholarship',
+        'site:rotary.org "Peace Fellowship"',
+        
+        # Europe
+        'site:daad.de "{topic}" scholarship', # Germany (Huge for Engineering)
+        'site:europa.eu "Erasmus Mundus" "{topic}"',
+        'site:studyinsweden.se "{topic}" scholarship'
+    ]
+
+    # 3. Regional Targets (Psychological Preferences)
+    regional_targets = [
+        # Asia (China/Korea/India)
+        'site:csc.edu.cn "{topic}" scholarship', # China CSC
+        'site:studyinkorea.go.kr "{topic}" scholarship', # Korea
+        'site:education.gov.in "{topic}" scholarship', # India
+        
+        # Africa
+        'site:.za "{topic}" postgraduate scholarship 2025', # South Africa
+        'site:.ke "{topic}" scholarship 2025' # Kenya
     ]
     
+    # 4. General Hidden Files (The "Wild West")
+    general_targets = [
+        'filetype:pdf "application form" "{topic}" scholarship 2025',
+        'site:.ac.uk "{topic}" funding international students 2025',
+        'site:.edu "{topic}" scholarship international students 2025'
+    ]
+    
+    # Combine everything
+    all_dorks = database_targets + prestige_targets + regional_targets + general_targets
+    
+    # Add Evolved Dorks from DB
     try:
-        # 2. Fetch the 'AlphaEvolved' dorks from the database
         response = supabase.table("search_dorks").select("dork_template").execute()
         db_dorks = [row['dork_template'] for row in response.data]
-        
-        if db_dorks:
-            print(f"   🧬 Found {len(db_dorks)} evolved strategies in memory.")
-        
-        # 3. Combine and remove duplicates (using set)
-        final_list = list(set(defaults + db_dorks))
-        return final_list
-        
-    except Exception as e:
-        print(f"   ⚠️ Could not fetch evolved dorks (using defaults): {e}")
-        return defaults
+        all_dorks += db_dorks
+    except:
+        pass
 
+    return list(set(all_dorks))
+    
 def google_search(query):
     url = "https://www.googleapis.com/customsearch/v1"
     params = {
@@ -128,3 +162,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
