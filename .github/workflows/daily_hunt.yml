@@ -27,6 +27,15 @@ jobs:
           # 2. Force install the missing tools (Fixes the crash)
           pip install google-api-python-client dateparser
 
+      - name: Run AlphaEvolve (Invent New Strategies)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          SEARCH_ENGINE_ID: ${{ secrets.SEARCH_ENGINE_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python alpha_evolve_dorks.py
+
       - name: Run Hunter (Find new URLs)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
