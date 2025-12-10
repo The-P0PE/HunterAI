@@ -156,10 +156,14 @@ def generate_essay(user_profile, scholarship_title, scholarship_data):
 # --- VAULT FUNCTIONS ---
 def save_to_vault(scholarship_id):
     try:
+        # Check if already saved
         existing = supabase.table("saved_scholarships").select("*").eq("scholarship_id", scholarship_id).execute()
         if not existing.data:
             supabase.table("saved_scholarships").insert({"scholarship_id": scholarship_id}).execute()
             st.toast("✅ Saved to Vault!")
+            
+            # THE FIX: Force the app to refresh immediately so the Sidebar updates
+            st.rerun()
         else:
             st.toast("⚠️ Already in Vault")
     except Exception as e:
@@ -282,4 +286,5 @@ if st.session_state.search_results:
 
 elif user_query and not st.session_state.search_results:
     st.info("Click 'Find Matches' to search.")
+
 
