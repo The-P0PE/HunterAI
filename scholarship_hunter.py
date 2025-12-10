@@ -18,13 +18,41 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_search_terms():
-    """Fetches active topics from the database"""
+    """Fetches active topics (e.g. 'Aerospace Engineering') from the database"""
     try:
         response = supabase.table("search_terms").select("topic").eq("is_active", True).execute()
         return [row['topic'] for row in response.data]
     except Exception as e:
         print(f"⚠️ Error fetching search terms: {e}")
-        return ["civil engineering", "aerospace engineering", "optometry"] # Added Optometry fallback
+        return ["civil engineering", "aerospace engineering", "optometry"]
+
+def get_dork_templates():
+    """
+    NEW FUNCTION: Fetches 'Evolved' search templates from the DB.
+    Combines them with a safe 'Default' list.
+    """
+    # 1. The Safety Net (Always keep these)
+    defaults = [
+        'site:.edu "{topic}" scholarship 2025 2026 international',
+        'filetype:pdf "application" "{topic}" scholarship 2025',
+        '"fully funded" masters "{topic}" uk 2025'
+    ]
+    
+    try:
+        # 2. Fetch the 'AlphaEvolved' dorks from the database
+        response = supabase.table("search_dorks").select("dork_template").execute()
+        db_dorks = [row['dork_template'] for row in response.data]
+        
+        if db_dorks:
+            print(f"   🧬 Found {len(db_dorks)} evolved strategies in memory.")
+        
+        # 3. Combine and remove duplicates (using set)
+        final_list = list(set(defaults + db_dorks))
+        return final_list
+        
+    except Exception as e:
+        print(f"   ⚠️ Could not fetch evolved dorks (using defaults): {e}")
+        return defaults
 
 def google_search(query):
     url = "https://www.googleapis.com/customsearch/v1"
@@ -33,7 +61,7 @@ def google_search(query):
         'key': GOOGLE_API_KEY,
         'cx': SEARCH_ENGINE_ID,
         'num': 10,
-        'dateRestrict': 'y1'  # <--- THE MAGIC FIX: Only results from the last 1 year
+        'dateRestrict': 'y1'  # Freshness Filter (Last 1 Year)
     }
     response = requests.get(url, params=params)
     return response.json()
@@ -47,9 +75,8 @@ def save_to_supabase(items, source_query):
                 "url": item.get('link'),
                 "content_snippet": item.get('snippet'),
                 "source_query": source_query,
-                "is_processed": False # Mark as new so the Scraper reads it
+                "is_processed": False 
             }
-            # Insert, ignore if URL already exists
             supabase.table("scholarships").upsert(data, on_conflict="url").execute()
             print(f"   ✅ Saved: {item.get('title')[:40]}..")
             count += 1
@@ -60,35 +87,26 @@ def save_to_supabase(items, source_query):
 def main():
     print("🚀 HunterAI: Initializing Freshness Protocol...")
     
-    # 1. Get topics from DB
+    # 1. Get Topics (What to search for)
     topics = get_search_terms()
-    
-    # If DB is empty, default to your profile interests
-    if not topics:
+    if not topics: 
         topics = ["Aerospace Engineering", "Optometry", "Civil Engineering"]
-        
-    print(f"🎯 Targeting {len(topics)} topics: {topics}")
     
-   # 2. Build smart queries (Explicitly asking for 2025/2026)
-    dork_templates = [
-        'site:.edu "{topic}" scholarship 2025 2026 international',
-        'filetype:pdf "application" "{topic}" scholarship 2025',
-        '"fully funded" masters "{topic}" uk 2025',
-        'site:.ac.uk "{topic}" funding international students 2025',
-        
-        # 🧬 THE ALPHA EVOLVED SURVIVOR:
-        'filetype:pdf intitle:application "{topic}" scholarship guidelines' 
-    ]
+    # 2. Get Dorks (How to search) -> REPLACED HARDCODED LIST WITH THIS:
+    dork_templates = get_dork_templates()
+    
+    print(f"🎯 Targeting {len(topics)} topics using {len(dork_templates)} strategies.")
     
     total_found = 0
     
-    # 3. Hunt
+    # 3. Hunt Loop
     for topic in topics:
-        selected_dorks = random.sample(dork_templates, 3) # Increased to 3
+        # Try 3 random strategies per topic to save API quota
+        selected_dorks = random.sample(dork_templates, min(3, len(dork_templates)))
         
         for template in selected_dorks:
             query = template.format(topic=topic)
-            print(f"\n🔍 Hunting for: {query}")
+            print(f"\n🔍 Hunting: {query}")
             
             try:
                 results = google_search(query)
@@ -99,7 +117,7 @@ def main():
                 elif 'error' in results:
                     print(f"   ⚠️ Google Error: {results['error']['message']}")
                 else:
-                    print(f"   ⚠️ No fresh results found.")
+                    print(f"   ⚠️ No fresh results.")
                     
                 time.sleep(1) 
                 
@@ -110,4 +128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
